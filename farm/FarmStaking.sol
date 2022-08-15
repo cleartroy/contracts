@@ -3,6 +3,7 @@ pragma solidity ^0.8.9;
 
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import '@openzeppelin/contracts/security/Pausable.sol';
+import "@openzeppelin/contracts/access/Ownable.sol";
 import '@openzeppelin/contracts/security/ReentrancyGuard.sol';
 import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
@@ -25,7 +26,7 @@ library Lib {
     }
 }
 
-contract FarmStaking is IFarmStaking, ERC721Holder, ERC1155Holder, ReentrancyGuard, Initializable, Pausable {
+contract FarmStaking is IFarmStaking, ERC721Holder, ERC1155Holder, ReentrancyGuard, Initializable, Pausable, Ownable {
     using EnumerableMap for EnumerableMap.UintToUintMap;
     using EnumerableSet for EnumerableSet.UintSet;
 
