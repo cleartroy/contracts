@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import '@openzeppelin/contracts/security/Pausable.sol';
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import '@openzeppelin/contracts/security/ReentrancyGuard.sol';
 
 import "../damoNft/IFactory.sol";
 
@@ -17,18 +18,19 @@ import "../libs/Permission.sol";
 
 import "./Model.sol";
 
-contract FarmReward is IFarmReward, Initializable, Pausable, Ownable {
-     using EnumerableSet for EnumerableSet.AddressSet;
+contract FarmReward is IFarmReward, Initializable, Pausable, ReentrancyGuard, Ownable {
+     using EnumerableSet for EnumerableSet.UintSet;
 
     // useraddr -> stakingindex -> nftotken -> nfttype -> gen -> tokenids -> blocktime
     event Claim(address indexed, uint256, address, uint8, uint8, uint256[], uint256);
 
+    event Initialized(address indexed);
+
+    // farmreward -> useraddr
+    event ImportedCheckpoint(address indexed, address indexed);
+
     // useraddr -> stakingindex -> Checkpoint
     mapping(address => mapping(uint256 => Model.Checkpoint[])) private checkpointMap;
-    EnumerableSet.AddressSet private checkpointAddrSet;
-    mapping(address => uint256[]) private checkpointStakingIndexMap;
-
-    mapping(address => uint8) private claimLocks;
 
     // useraddr -> tokenid -> claimedamount
     mapping(address => mapping(uint256 => uint256)) claimedAmountMap;
@@ -40,20 +42,14 @@ contract FarmReward is IFarmReward, Initializable, Pausable, Ownable {
         _;
     }
 
-    modifier claimLock() {
-        require(claimLocks[_msgSender()] == 0, "FarmReward: Locked");
-        claimLocks[_msgSender()] == 1;
-        _;
-        claimLocks[_msgSender()] == 0;
-    }
-
-    function init(IAppConf _appConf) external onlyOwner {
+    function initialize(IAppConf _appConf) external onlyOwner {
         appConf = _appConf;
 
         initialized = true;
+        emit Initialized(address(appConf));
     }
 
-    function _claimAll(address userAddr) private whenNotPaused needInit {
+    function _claimAll(address userAddr) private needInit whenNotPaused {
         require(!appConf.validBlacklist(userAddr), "FarmReward: can not claim");
 
         IFarmStaking farmStaking = IFarmStaking(appConf.getFarmAddr().farmStakingAddr);
@@ -66,11 +62,11 @@ contract FarmReward is IFarmReward, Initializable, Pausable, Ownable {
         }
     }
 
-    function claimAll() external whenNotPaused needInit claimLock {
+    function claimAll() external needInit whenNotPaused nonReentrant {
         _claimAll(_msgSender());
     }
 
-    function claim(uint256 stakingIndex) external whenNotPaused needInit claimLock {
+    function claim(uint256 stakingIndex) external needInit whenNotPaused nonReentrant {
         require(!appConf.validBlacklist(_msgSender()), "FarmReward: can not claim");
 
         // staking record
@@ -81,7 +77,7 @@ contract FarmReward is IFarmReward, Initializable, Pausable, Ownable {
         _claim(_msgSender(), stakingRecords[stakingIndex]);
     }
 
-    function proxyClaim(address userAddr, uint256 stakingIndex) external onlyFarm whenNotPaused needInit claimLock {
+    function proxyClaim(address userAddr, uint256 stakingIndex) external needInit onlyFarm whenNotPaused nonReentrant {
         require(appConf.getEnabledProxyClaim(), "FarmReward: can not proxy claim");
 
         // staking record
@@ -103,24 +99,6 @@ contract FarmReward is IFarmReward, Initializable, Pausable, Ownable {
         uint256 rewardAmount = _calcStakingRewardAmount(userAddr, stakingRecord);
         if (rewardAmount == 0) {
             return;
-        }
-
-        // save checkpoint addr
-        if (!checkpointAddrSet.contains(userAddr)) {
-            checkpointAddrSet.add(userAddr);
-        }
-
-        // save checkpoint staking index
-        bool found = false;
-        for (uint256 index = 0; index < checkpointStakingIndexMap[userAddr].length; index++) {
-            if (checkpointStakingIndexMap[userAddr][index] == stakingRecord.index) {
-                found = true;
-                break;
-            }
-        }
-
-        if (!found) {
-            checkpointStakingIndexMap[userAddr].push(stakingRecord.index);
         }
 
         // save checkpoint
@@ -204,50 +182,9 @@ contract FarmReward is IFarmReward, Initializable, Pausable, Ownable {
         uint256 rewardAmount = _calcStakingRewardAmount(userAddr, stakingRecords[stakingIndex]);
         return rewardAmount;
     }
-
-    function getCheckpointAddrs() external view override returns(address[] memory) {
-        return checkpointAddrSet.values();
-    }
-
+    
     function getCheckpoints(address userAddr, uint256 stakingIndex) external view returns(Model.Checkpoint[] memory) {
         return checkpointMap[userAddr][stakingIndex];
-    }
-
-    function getCheckpointStakingIndexs(address userAddr) external view override returns(uint256[] memory) {
-        return checkpointStakingIndexMap[userAddr];
-    }
-
-    function importCheckpoints(address farmRewardAddr) external needInit onlyOwner {
-        address[] memory addrs = IFarmReward(farmRewardAddr).getCheckpointAddrs();
-
-        for (uint256 index = 0; index < addrs.length; index++) {
-            _importCheckpointsByUserAddr(farmRewardAddr, addrs[index]);
-        }
-    }
-
-    function importCheckpointsByUserAddr(address farmRewardAddr, address userAddr) external needInit onlyOwner {
-        _importCheckpointsByUserAddr(farmRewardAddr, userAddr);
-    }
-
-    function _importCheckpointsByUserAddr(address farmRewardAddr, address userAddr) private {
-        uint256[] memory stakingIndexs = IFarmReward(farmRewardAddr).getCheckpointStakingIndexs(userAddr);
-
-        for (uint256 index = 0; index < stakingIndexs.length; index++) {
-            Model.Checkpoint[] memory checkpoints = IFarmReward(farmRewardAddr).getCheckpoints(userAddr, stakingIndexs[index]);
-
-            if (checkpoints.length > 0) {
-                // remove old data
-                delete checkpointMap[userAddr][stakingIndexs[index]];
-
-                // only import latest checkpoint
-                Model.Checkpoint memory checkpoint = checkpoints[checkpoints.length - 1];
-                
-                checkpointMap[userAddr][stakingIndexs[index]].push(Model.Checkpoint({
-                    blockNumber: checkpoint.blockNumber,
-                    timestamp: checkpoint.timestamp
-                }));
-            }   
-        }
     }
 
     function getClaimedAmount(address userAddr, uint256 tokenId) external view returns(uint256) {
