@@ -46,15 +46,18 @@ contract WishPool is Initializable, Pausable, Ownable {
     // useraddr -> burnData -> grantData -> redeemToken -> donateAmount -> incenseAmount -> blocktime
     event Redeem(address indexed, string, string, address, uint256, uint256, uint256);
 
+    event Initialized(address indexed);
+
     mapping(address => WishData[]) private wishMap;
     uint256 private wishCount;
 
     IAppConf private appConf;
 
-    function init(IAppConf _appConf) external onlyOwner {
+    function initialize(IAppConf _appConf) external onlyOwner {
         appConf = _appConf;
 
         initialized = true;
+        emit Initialized(address(appConf));
     }
 
     function wish(string memory content) external {
