@@ -6,7 +6,6 @@ import '@openzeppelin/contracts/security/Pausable.sol';
 import "@openzeppelin/contracts/access/Ownable.sol";
 import '@openzeppelin/contracts/security/ReentrancyGuard.sol';
 import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
-import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
@@ -26,7 +25,7 @@ library Lib {
     }
 }
 
-contract FarmStaking is IFarmStaking, ERC721Holder, ERC1155Holder, ReentrancyGuard, Initializable, Pausable, Ownable {
+contract FarmStaking is IFarmStaking, ERC721Holder, ReentrancyGuard, Initializable, Pausable, Ownable {
     using EnumerableMap for EnumerableMap.UintToUintMap;
     using EnumerableSet for EnumerableSet.UintSet;
 
@@ -35,6 +34,8 @@ contract FarmStaking is IFarmStaking, ERC721Holder, ERC1155Holder, ReentrancyGua
 
     // sender -> stakingindex -> nftoken -> tokenids -> gen -> blocktime
     event Unstaked(address indexed, uint256, address, uint256[], uint8, uint256);
+
+    event Initialized(address indexed);
 
     // useraddr -> stakingrecord
     mapping(address => Model.StakingRecord[]) private stakingRecordMap;
@@ -47,10 +48,12 @@ contract FarmStaking is IFarmStaking, ERC721Holder, ERC1155Holder, ReentrancyGua
 
     IAppConf appConf;
 
-    function init(IAppConf _appConf) external onlyOwner {
+    function initialize(IAppConf _appConf) external onlyOwner {
         appConf = _appConf;
 
         initialized = true;
+
+        emit Initialized(address(appConf));
     }
 
     function stake(address nftToken, uint256[] calldata tokenIds, string calldata wish) external whenNotPaused nonReentrant needInit {
