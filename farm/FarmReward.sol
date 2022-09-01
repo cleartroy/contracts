@@ -26,9 +26,6 @@ contract FarmReward is IFarmReward, Initializable, Pausable, ReentrancyGuard, Ow
 
     event Initialized(address indexed);
 
-    // farmreward -> useraddr
-    event ImportedCheckpoint(address indexed, address indexed);
-
     // useraddr -> stakingindex -> Checkpoint
     mapping(address => mapping(uint256 => Model.Checkpoint[])) private checkpointMap;
 
@@ -49,7 +46,7 @@ contract FarmReward is IFarmReward, Initializable, Pausable, ReentrancyGuard, Ow
         emit Initialized(address(appConf));
     }
 
-    function _claimAll(address userAddr) private needInit whenNotPaused {
+    function _claimAll(address userAddr) private {
         require(!appConf.validBlacklist(userAddr), "FarmReward: can not claim");
 
         IFarmStaking farmStaking = IFarmStaking(appConf.getFarmAddr().farmStakingAddr);
@@ -189,5 +186,13 @@ contract FarmReward is IFarmReward, Initializable, Pausable, ReentrancyGuard, Ow
 
     function getClaimedAmount(address userAddr, uint256 tokenId) external view returns(uint256) {
         return claimedAmountMap[userAddr][tokenId];
+    }
+
+    function pause() public onlyOwner {
+        _pause();
+    }
+
+    function unpause() public onlyOwner {
+        _unpause();
     }
 }
