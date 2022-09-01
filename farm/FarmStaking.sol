@@ -19,12 +19,6 @@ import "../libs/Initializable.sol";
 
 import "./Model.sol";
 
-library Lib {
-    struct NftDetail {
-        uint8 nftType;
-    }
-}
-
 contract FarmStaking is IFarmStaking, ERC721Holder, ReentrancyGuard, Initializable, Pausable, Ownable {
     using EnumerableMap for EnumerableMap.UintToUintMap;
     using EnumerableSet for EnumerableSet.UintSet;
@@ -56,7 +50,7 @@ contract FarmStaking is IFarmStaking, ERC721Holder, ReentrancyGuard, Initializab
         emit Initialized(address(appConf));
     }
 
-    function stake(address nftToken, uint256[] calldata tokenIds, string calldata wish) external whenNotPaused nonReentrant needInit {
+    function stake(address nftToken, uint256[] calldata tokenIds, string calldata wish) external needInit whenNotPaused nonReentrant {
         require(!appConf.validBlacklist(_msgSender()), "FarmStaking: can not stake");
         require(appConf.validStakingNftToken(nftToken), "FarmStaking: invalid nft token");
         require(tokenIds.length > 0, "FarmStaking: tokenids length is 0");
@@ -84,11 +78,7 @@ contract FarmStaking is IFarmStaking, ERC721Holder, ReentrancyGuard, Initializab
             stakingStatusMap.set(tokenIds[i], 1);
         }
 
-        uint256 stakingIndex = 0;
-        if (stakingRecordMap[_msgSender()].length > 0) {
-            stakingIndex = stakingRecordMap[_msgSender()].length;
-        }
-
+        uint256 stakingIndex = stakingRecordMap[_msgSender()].length;
         stakingRecordMap[_msgSender()].push(Model.StakingRecord({
             index: stakingIndex,
             nftToken: nftToken,
@@ -109,7 +99,7 @@ contract FarmStaking is IFarmStaking, ERC721Holder, ReentrancyGuard, Initializab
         emit Staked(_msgSender(), stakingIndex, nftToken, tokenIds, gen, wish, block.timestamp);
     }
 
-    function unstake(uint256 stakingIndex) external whenNotPaused nonReentrant needInit {
+    function unstake(uint256 stakingIndex) external needInit whenNotPaused nonReentrant {
         require(!appConf.validBlacklist(_msgSender()), "FarmStaking: can not unstake");
 
         _unstake(_msgSender(), stakingIndex);
@@ -119,13 +109,13 @@ contract FarmStaking is IFarmStaking, ERC721Holder, ReentrancyGuard, Initializab
         require(stakingRecordMap[userAddr].length > stakingIndex, "FarmStaking: invalid index");
         require(stakingRecordMap[userAddr][stakingIndex].status == Model.STAKING_STATUS_STAKED, "FarmStaking: invalid staking status");
 
-        stakingIndexMap[userAddr].remove(stakingIndex);
+        stakingIndexMap[userAddr].remove(stakingIndex);        
 
         // claim reward
         if (appConf.getEnabledProxyClaim()) {
             IFarmReward(appConf.getFarmAddr().farmRewardAddr).proxyClaim(userAddr, stakingIndex);
         }
-        
+
         // update status
         Model.StakingRecord storage record = stakingRecordMap[userAddr][stakingIndex];
         record.status = Model.STAKING_STATUS_UNSTAKED;
@@ -141,7 +131,7 @@ contract FarmStaking is IFarmStaking, ERC721Holder, ReentrancyGuard, Initializab
         emit Unstaked(userAddr, stakingIndex, record.nftToken, record.tokenIds, record.gen, block.timestamp);
     }
 
-    function unstakeAll() external whenNotPaused nonReentrant needInit {
+    function unstakeAll() external needInit whenNotPaused nonReentrant {
         require(!appConf.validBlacklist(_msgSender()), "FarmStaking: can not unstake");
 
         for (uint256 index = 0; index < stakingRecordMap[_msgSender()].length; index++) {
@@ -176,5 +166,13 @@ contract FarmStaking is IFarmStaking, ERC721Holder, ReentrancyGuard, Initializab
 
     function getStakingIndexs(address userAddr) external view override returns(uint256[] memory) {
         return stakingIndexMap[userAddr].values();
+    }
+
+    function pause() public onlyOwner {
+        _pause();
+    }
+
+    function unpause() public onlyOwner {
+        _unpause();
     }
 }
