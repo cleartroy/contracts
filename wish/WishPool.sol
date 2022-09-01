@@ -73,9 +73,10 @@ contract WishPool is Initializable, Pausable, Ownable {
         emit Wish(_msgSender(), wishCount, content, block.number, block.timestamp);
     }
 
-    function redeem(RedeemData memory redeemData) external whenNotPaused needInit payable {
+    function redeem(RedeemData memory redeemData) external needInit whenNotPaused payable {
         require(!appConf.validBlacklist(_msgSender()), "can not redeem");
         require(appConf.validRedeemToken(redeemData.redeemToken), "invalid redeem token");
+        require(_msgSender() != redeemData.grantAddr, "can not grant to self");
 
         // nft info
         (, uint8 redeemNftGen,) = IFactory(appConf.getNftFactoryAddr()).tokenDetail(Model.NFT_TYPE_WISH, redeemData.tokenId);
@@ -176,5 +177,13 @@ contract WishPool is Initializable, Pausable, Ownable {
 
     function getWishs(address userAddr) external view returns(WishData[] memory) {
         return wishMap[userAddr];
+    }
+
+    function pause() public onlyOwner {
+        _pause();
+    }
+
+    function unpause() public onlyOwner {
+        _unpause();
     }
 }
